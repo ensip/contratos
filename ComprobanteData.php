@@ -88,7 +88,7 @@ class ComprobanteData{
 					}
 				}
 			} else{
-				return array(0 => 'error' , 'str' => 'Comprobante incorrecto.');
+				return array(0 => 'error' , 'str' => 'No hay comprobante asociado a este token ' . $cr);
 			}
 		}
 		return d8($resultado);
@@ -188,10 +188,63 @@ class ComprobanteData{
 					$resultado .= "Operación Autorizada con Código: ".$tx_authcode." ";
 				}
 			} else{
-				return array(0 => 'error' , 'str' => 'Comprobante incorrecto..');
+				return array(0 => 'error' , 'str' => 'Comprobante incorrecto en este comercio: Cubarentcars.');
 			}
 		}
 		return d8($resultado);
+	}
+
+	/*
+	 *	buscar en ensip/cbn: payment_tokens where metodo = network_iframe
+	 * */
+	public function getDataNetwork($num_pedido, $token) {
+		
+		$con = getConnLi('getDataEnsip');
+		
+		$sql = sprintf("select pt.*, nt.authorizationCode from payment_tokens pt inner join network_tokens nt on pt.token = nt.token and pt.token  LIKE '%s' and pagado = 1", $token);
+		$res = $con->query($sql);
+
+		$datos = array();
+		if ($res->num_rows > 0) {	
+			while ($row = $res->fetch_object()) {
+				$datos = $row;
+			}
+		}
+		$resultado = '';
+		if (empty($datos)) {
+			$con = getConnLi('getDataCbn');
+			$sql = sprintf("select pt.*, nt.* from payment_tokens pt inner join network_tokens nt on pt.token = nt.token and pt.token  LIKE '%s' and pagado = 1", $token);
+			$res = $con->query($sql);
+
+			$datos = array();
+			if ($res->num_rows > 0) {	
+				while ($row = $res->fetch_object()) {
+					$datos = $row;
+				}
+			}
+		} 
+		if (!empty($datos)) {
+			
+			$importe = $datos->cantidad;
+			$moneda = $datos->nombre_divisa;
+			
+			$this->tk['divisa'] = $moneda;
+			$this->tk['num_pedido'] = $num_pedido;
+		
+			$this->datos_comprobante['importe'] = $importe;
+			$this->datos_comprobante['moneda'] = $moneda;
+			$this->datos_comprobante['num_pedido'] = $num_pedido;
+			$this->datos_comprobante['operacion'] = ($datos->pagado ? 'OK':'KO');
+			$this->datos_comprobante['concepto'] = $datos->notas;
+			$this->datos_comprobante['fecha'] = $datos->fecha_pago;
+
+			$resultado = "Pago realizado con éxito Tipo Operación: Autorización ";
+			$resultado .= "Importe: " . $importe ."&nbsp;". $moneda . " ";
+			$resultado .= "Número pedido:  " . $num_pedido . " ";
+			$resultado .= "Operación Autorizada con Código: ".$datos->authorizationCode." ";
+		}
+
+		return $resultado;
 	}
 
 	private function getDataPrepagos($token, $usuario) {
@@ -208,7 +261,13 @@ class ComprobanteData{
 		return $datos;
 	}
 
+	/*
+	 *	probado si pagado o no pagado y ok
+	 *
+	 * */
 	function getDataCBN($match) {
+
+		$resultado = '';
 
 		if (is_null($match)) { 
 			$id_usuario = $this->tk['ref_tk'];
@@ -222,12 +281,17 @@ class ComprobanteData{
 		}		
 		
 		$data = $this->getDataLacubana($token);
-
-		if (empty ($data)) {
+		
+		if (empty($data)) {
 			return array(0 => 'error' , 'str' => 'Comprobante incorrecto');
 			exit;
 		} else {
-			
+
+			if (!$data->pagado) {
+				return array(0 => 'error' , 'str' => (!empty($data->notas)) ? utf8_encode($data->notas) : 'Pago no completado');
+				exit;
+			}
+
 			$merchant_order = $tipo_tk . ":" . $id_usuario . ":" . $token; 
 		
 			$pagado = $data->pagado;
@@ -235,9 +299,6 @@ class ComprobanteData{
 			$divisa = $data->nombre_divisa;
 			$importe = preg_replace("/\./" , "," , ($cantidad + 0));			
 
-			//$id_pagos_referencia = $data->id_pagos_referencia; //TODO no esta en la tabla de cbn paytpv_tokens
-			//$cod_error = $reg_pt->DS_ERROR_ID; //TODO IGUAL ARRIBA
-			
 			//getDataDivisa : return EUR, USD
 			if (getDataDivisa($divisa)  != $this->datos_comprobante['divisa']) {
 				return array(0 => 'error' , 'str' => 'Error divisa');
@@ -563,54 +624,18 @@ class ComprobanteData{
 		} else {
 			if ($this->comprobante != '') {
 				
-				$res_comprobante = array();
-				$texto_comprobante = $this->comprobante;
-				$match = null;
-			
-				$search_token = token::search($texto_comprobante);
-				if (!is_null($search_token)) {
-					if ($search_token->es_match()) {
-
-						if (!$this->no_comprobar_num_pedido && checkIfExistsNumPedido($search_token->get_num_pedido())) {
-							syslog(LOG_INFO, __FILE__ . ": TK(I|A) : " . $search_token->get_num_pedido());
-							return array(0 => 'error' , 'str' => 'Token <b>'.$search_token->get_num_pedido().'</b> existente');
-						}
-						
-						$this->tk['ref_tk'] = $search_token->get_user_token();
-						$this->tk['tipo_tk'] = $search_token->get_tipo_comprobante();
-						$this->tk['token'] = $search_token->get_token();
-						$this->tk['num_pedido'] = $search_token->get_num_pedido();
-						
-						if ($search_token->es_tpv_tk()) {
-							$this->setNombreComprobante('TK');
-							$res_comprobante = $this->getDataTK($match); 
-
-						} else if ($search_token->tipo_comprobante == 'CBN') {
-
-							$this->setNombreComprobante($search_token->tipo_comprobante);
-							$res_comprobante = $this->getDataCBN($match); 
-
-						} else if ($search_token->tipo_comprobante == 'CR') {
-
-							$this->setNombreComprobante($search_token->tipo_comprobante);
-							$res_comprobante = $this->getDataCR($search_token->get_num_pedido(), 'cr2'); 
-							if (isset($res_comprobante[0]) && $res_comprobante[0] == 'error') {
-								$res_comprobante = $this->getDataCR2V_($search_token->get_token(), $search_token->get_num_pedido()); 
-
-							}
-						}
+				$datos_comprobante = $this->searchDatos();	
+				if (!empty($datos_comprobante)) {
+					if (isset($datos_comprobante[0]) && $datos_comprobante[0] == 'error') {
+						return $datos_comprobante;
 					}
-				}
-			}
-			if (!empty($res_comprobante)) {
-				if (isset($res_comprobante[0]) && $res_comprobante[0] == 'error') {
-					return $res_comprobante;
-				}
 
-				$this->datos_comprobante['comprobante'] = $res_comprobante;
+					$this->datos_comprobante['comprobante'] = $datos_comprobante;
+				}
 			}
+
 			if (empty($this->tk)) {
-				$this->datos_comprobante = $this->extractData($texto_comprobante);
+				$this->datos_comprobante = $this->extractData($this->comprobante);
 			}
 		}
 		return $this->datos_comprobante;
@@ -703,6 +728,64 @@ class ComprobanteData{
 			}
 		}
 		return $valor_importe;
+	}
+	private function getDataToken($searchToken) {
+
+		$match = null;
+		$dataComprobante = array();
+		$tipoComprobante = $searchToken->tipo_comprobante;
+		$nombreComprobante = $tipoComprobante;
+	
+		switch($tipoComprobante) {
+
+			case 'CBN':
+				$dataComprobante = $this->getDataCBN($match); 
+			break;
+			case 'CR':
+				$dataComprobante = $this->getDataCR($searchToken->get_num_pedido(), 'cr2'); 
+				if (isset($dataComprobante[0]) && $dataComprobante[0] == 'error') {
+					$dataComprobante = $this->getDataCR2V_($searchToken->get_token(), $searchToken->get_num_pedido()); 
+				}
+			break;	
+			case 'NETWORK':
+				$dataComprobante = $this->getDataNetwork($searchToken->get_num_pedido(), $searchToken->get_token()); 
+			break;
+			default:
+				if ($searchToken->es_tpv_tk()) {
+					$nombreComprobante = 'TK';
+					$dataComprobante = $this->getDataTK($match); 
+
+				}
+			break;
+		}
+		if (!empty($dataComprobante)) {
+			$this->setNombreComprobante($nombreComprobante);
+		}
+		return $dataComprobante;
+	}
+	private function searchDatos() {
+
+		$res_comprobante = array();
+
+		$search_token = token::search($this->comprobante);
+		if (!is_null($search_token)) {
+			if ($search_token->es_match()) {
+				$match = null;
+
+				if (!$this->no_comprobar_num_pedido && checkIfExistsNumPedido($search_token->get_num_pedido())) {
+					syslog(LOG_INFO, __FILE__ . ": TK(I|A) : " . $search_token->get_num_pedido());
+					return array(0 => 'error' , 'str' => 'Token <b>'.$search_token->get_num_pedido().'</b> existente');
+				}
+				
+				$this->tk['ref_tk'] = $search_token->get_user_token();
+				$this->tk['tipo_tk'] = $search_token->get_tipo_comprobante();
+				$this->tk['token'] = $search_token->get_token();
+				$this->tk['num_pedido'] = $search_token->get_num_pedido();
+
+				$res_comprobante = $this->getDataToken($search_token);	
+			}
+		}
+		return $res_comprobante;
 	}
 	public function set_no_comprobar_num_pedido($bool) {
 		$this->no_comprobar_num_pedido = $bool;
