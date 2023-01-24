@@ -114,9 +114,12 @@ class ComprobanteData{
 						syslog(LOG_INFO, __FILE__ . ':' . __METHOD__ . ':estado no pagado ni completado: ' . $cr);
 						return array(0 => 'error' , 'str' => 'Comprobante con estado no válido ('.$reg->estado.').');
 					}
+					$moneda = trim($reg->divisa);
+		       			$tx_authcode = '';
+					$es_el_padre = 1;	
+
                                		if ($transacciones = unserialize($reg->transacciones_gpt)) {
 						$cant_transacciones = count($transacciones);
-						$moneda = trim($reg->divisa);
 						$campo_precio = 'total_a_pagar';
 						$divisa =  1;
 						if ($moneda == 'USD') {
@@ -126,9 +129,6 @@ class ComprobanteData{
 						if ($cant_transacciones == 1) {
 							$importe = $reg->$campo_precio;			
 						}
-			       			$tx_authcode = '';
-
-						$es_el_padre = 1;	
 						foreach ($transacciones as $tx) {
 							
 							$token_pago_interno = '';
@@ -162,11 +162,6 @@ class ComprobanteData{
 							$this->datos_comprobante['operacion'] = ($reg->pagado ? '00:Approved' : '');
 						}
 
-						$resultado = "Pago realizado con éxito Tipo Operación: Autorización ";
-						$resultado .= "Importe: " . $importe ."&nbsp;". $moneda . " ";
-						$resultado .= "Número pedido:  " . ($es_el_padre ? $num_pedido : $token_texto) . " ";
-						$resultado .= "Operación Autorizada con Código: ".$tx_authcode." ";
-
 						$this->datos_comprobante['fecha'] = $reg->fecha;
 						$this->datos_comprobante['importe'] = $importe;
 						$this->datos_comprobante['concepto'] = '';
@@ -177,7 +172,20 @@ class ComprobanteData{
 						} else {
 							$this->datos_comprobante['moneda'] = $moneda;
 						}
+					} else {
+						$divisa =  ($moneda == 'USD')  ? 2 : 1;
+						$importe = $reg->cantidad_pagada;
+						$this->datos_comprobante['fecha'] = $reg->fecha;
+						$this->datos_comprobante['importe'] = $importe;
+						$this->datos_comprobante['concepto'] = '';
+						$this->datos_comprobante['num_pedido'] = $num_pedido;
+						$this->datos_comprobante['operacion'] = ($reg->pagado ? '00:Approved' : '');
+
 					}
+					$resultado = "Pago realizado con éxito Tipo Operación: Autorización ";
+					$resultado .= "Importe: " . $importe ."&nbsp;". $moneda . " ";
+					$resultado .= "Número pedido:  " . ($es_el_padre ? $num_pedido : $token_texto) . " ";
+					$resultado .= "Operación Autorizada con Código: ".$tx_authcode." ";
 				}
 			} else{
 				return array(0 => 'error' , 'str' => 'Comprobante incorrecto..');
