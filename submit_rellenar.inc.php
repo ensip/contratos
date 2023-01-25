@@ -472,7 +472,7 @@ function checkIfMustNauta($hay_nautas,$hay_va_nauta,$oferta_nauta,$obligado_naut
 			    $sum_recargas += $value[$i];
 		    }
 	    }
-	    if ($num[$i] == '' && $value[$i] == '') { 
+	    if (isset($num[$i]) && $num[$i] == '' && $value[$i] == '') { 
 		    $cant_vacios ++;
 	    }
     }
@@ -576,13 +576,18 @@ function checkIfMustNauta($hay_nautas,$hay_va_nauta,$oferta_nauta,$obligado_naut
 				}
 			}
 		}
-		if (!empty($user_token)) {
+		if (!empty($user_token) || $es_network) {
 			
 			$es_jyctel = 0;
-	
+			
+			$and_id_usuario = '';
+			if (!$es_network) {
+				$and_id_usuario = " and id_usuario = '$user_token'";
+			}	
+
 		    	// Nuevo sistema comprobante (cardcode|ref_previa|id_usr_ensip)_TK_(token)
-			$sql_refp = "select * from PrepagosJyc.payment_tokens where token like '$token' and id_usuario = '$user_token'";
-			$res = $con_li->query ($sql_refp);
+			$sql_refp = "select * from PrepagosJyc.payment_tokens where token like '$token' " . $and_id_usuario;
+			$res = $con_li->query($sql_refp);
 	   
 			$hay_comprobante = 0;
 			$bd_payment_tokens = '';
@@ -598,7 +603,7 @@ function checkIfMustNauta($hay_nautas,$hay_va_nauta,$oferta_nauta,$obligado_naut
 	
 				$con_ensip = getConnLi('getDataEnsip');
 				$con_li_pt = $con_ensip;
-				$sql_refp = "select * from payment_tokens where token like '$token' and id_usuario = '$user_token'";
+				$sql_refp = "select * from payment_tokens where token like '$token' " . $and_id_usuario; 
 				$res = $con_ensip->query($sql_refp);
 	
 				if ($res->num_rows > 0) {
@@ -644,7 +649,7 @@ function checkIfMustNauta($hay_nautas,$hay_va_nauta,$oferta_nauta,$obligado_naut
 					$comprobante .= $num_pedido_comprobante;
 				}
 				$reg_pt = null;	
-				if (!empty($num_pedido_comprobante)) {
+				if (!empty($num_pedido_comprobante) && !$es_network) { 
 
 					$sql_pt = sprintf("select * from %s%s where %s = '%s'",
 						$bd_payment_tokens,
