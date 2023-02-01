@@ -12,6 +12,7 @@ class ComprobanteData{
 	protected $tk = array();
 	protected $datos_comprobante = array();
 	protected $no_comprobar_num_pedido = false;
+	public $warning = '';
 
 	function __construct($info)
 	{
@@ -96,6 +97,7 @@ class ComprobanteData{
 
 	public function getDataCR2V_($cr, $num_pedido) 
 	{
+		var_dump($_POST[$_POST['tipo_item']]['datos']['producto']['reserva']);
 		$search_token_orig = token::search($num_pedido);
 		//echo $token_pago_interno_orig = $search_token_orig->get_token();
 
@@ -109,10 +111,14 @@ class ComprobanteData{
 
 			if ($res->num_rows > 0) {
 				while($reg = $res->fetch_object()) {
-					//	debug($reg);
 					if (!in_array($reg->estado, array('pagado', 'completado'))) {
 						syslog(LOG_INFO, __FILE__ . ':' . __METHOD__ . ':estado no pagado ni completado: ' . $cr);
-						return array(0 => 'error' , 'str' => 'Comprobante con estado no válido ('.$reg->estado.').');
+						if ($reg->estado == 'pendiente_pago') {
+							$this->warning = 'pendiente-pago-comprobante';
+
+						} else {
+							return array(0 => 'error' , 'str' => 'Comprobante con estado no válido ('.$reg->estado.').');
+						}
 					}
 					$moneda = trim($reg->divisa);
 		       			$tx_authcode = '';
