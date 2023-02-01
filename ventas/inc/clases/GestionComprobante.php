@@ -12,8 +12,8 @@ class gestionComprobante
 	protected $log = '';
 	protected $view_log = 1;
 	protected $eliminar_comprobante = '';
+
 	protected $no_comprobar_num_pedido = false;
-	public $warning = '';
 	
 	function __construct($post, $log = 0)
 	{
@@ -32,7 +32,6 @@ class gestionComprobante
 				/* extraigo datos del comprobante si hay texto */
 				if ( $this->vpost['input_comprobante'] != '' ){
 					$this->comprobante = $this->extractComprobanteData();
-					
 					if (isset($this->comprobante['importe'])) {
 						$this->comprobante['restante'] = $this->comprobante['importe'];
 					}
@@ -178,19 +177,18 @@ class gestionComprobante
 			$texto_comprobante = str_replace( array("\r\n","\n","\r"," "), '', $texto_comprobante );
 			$this->vpost['input_comprobante'] = trim( $texto_comprobante );
 		}
+
 		$info_comprobante = array(
 				'texto' => $this->vpost['input_comprobante'],
 				'ingreso' => $this->vpost['ingreso'],
 				'divisa' => $this->vpost['divisa']);	
 		$_comprobanteData = new ComprobanteData( $info_comprobante );
+
 		if ($this->no_comprobar_num_pedido) {
 			$_comprobanteData->set_no_comprobar_num_pedido($this->no_comprobar_num_pedido);
 		}
 
 		$datos = $_comprobanteData->getComprobante( $this->vpost );
-		if (!empty($_comprobanteData->warning)) {
-			$this->warning = $_comprobanteData->warning;
-		}
 		return $datos;
 	}
 	/* call:this */
@@ -209,7 +207,7 @@ class gestionComprobante
 	 * Devuelve array comprobantes guardados con el nuevo añadido o el original si no hay nada que añadir
 	 * call: this
 	 * */
-	function addComprobante() 
+	function addComprobante()
 	{
 		$cs_guardados = $this->cs_guardados;
 		$cs_new = $this->comprobante;
@@ -230,7 +228,6 @@ class gestionComprobante
 		}
 		$this->cs_guardados = $cs_guardados;
 	}
-
 	public function setNoComprobarNumPedido($bool) {
 		$this->no_comprobar_num_pedido = $bool;
 	}
@@ -285,8 +282,6 @@ class gestionComprobante
 	/* se crea al llamar para crear el listado 
 	 * SI HAY GUARDADOS SE CREA EL DIV QUE LOS MUESTRA
 	 * call : this
-	 *
-	 * @returns string
 	 * */ 
 	function crearListadoComprobantes()
 	{
@@ -324,17 +319,25 @@ class gestionComprobante
 		return $this->eliminar_comprobante;
 	}
 	/* call : cntr.venta*/
-	public function getListadoComprobantes(){
+	function getListadoComprobantes(){
 		$this->crearListadoComprobantes();
 		return $this->list_comprobantes;
 	}
-	
+	/* si hay comprobantes genera el boton para hacer asignaciones
+	 * call : Venta.class
+	 * */
+	function getBotonAsignacion(){
+		$html = '';
+		if( $this->list_comprobantes != '' )
+			$html = '<input type="submit" value="'.d8('Facturar Comprobantes').'" name="ver_asig_comprobante">';
+		return $html;
+
+	}
 	/*
 	 *  Devuelve error true si el comprobante tiene errores en la posicion [0]
 	 *  call : this
 	 *  */
 	function getErrorComprobanteAdded(){
-
 		return ( isset($this->comprobante[0]) && $this->comprobante[0] == 'error' ) ? 1 : 0;
 	}
 	/*
@@ -348,7 +351,7 @@ class gestionComprobante
 		$importe = 0;
 		$sel_divisa = null;
 		$html = '';
-
+	
 		/* si hay errores recupero valores para rectificar formulario */
 		if ($this->addpost != '' && isset($this->comprobante[0]) && $this->comprobante[0] == 'error') {
 			$valores = $this->getPostValues();
@@ -358,7 +361,7 @@ class gestionComprobante
 			$sel_ingreso = ( isset( $valores[ 'sel_ingreso' ]) ) ? $valores[ 'sel_ingreso' ] : '';
 			$nombre_divisa = ( isset( $valores[ 'nombre_divisa' ]) ) ? $valores[ 'nombre_divisa' ] : '';
 
-			$html .= "<div id='check_campos' class=''>";
+			$html  = "<div id='check_campos' class=''>";
 			$html .=	"<p>" . d8($this->comprobante['str']) . "</p>";
 			$html .= "</div>";
 		}
@@ -388,7 +391,7 @@ class gestionComprobante
 		$ingresos = Coleccion::get('tiposIngresos');
 
 		foreach( $ingresos as $nombre => $valor ) if( $valor != 'crear_dev' ){
-
+		
 			$html .= '<option value="'.$valor.'" '.(isset($sel_ingreso[$valor]) ? $sel_ingreso[$valor] : '' ).' >'.$nombre.'</option>';
 		}
 
@@ -422,14 +425,16 @@ class gestionComprobante
 	/* genera Form para crear comprobantes 
 	 * call : venta
 	 * */
-	public function getFormComprobante( $ver_form ) {
+	function getFormComprobante( $ver_form ){
 
-		$html = '';
 		$error_added = $this->getErrorComprobanteAdded();
-		if( $ver_form || $error_added) {	
+
+		$html = '<input type="submit" value="'.d8('Crear Comprobante').'" name="add_div_comprobante">';
+		if( $ver_form || $error_added )
+		{	
 			$html .= $this->getDataForm();
 		}
-
+		
 		return $html;
 	}
 	/* sum_importe generado en setDivComprobante 
@@ -443,6 +448,7 @@ class gestionComprobante
 			$sum_importe += $importe;
 		}
 		$this->sum_importe = $sum_importe;
+	                echo"<!--";debug($this->sum_importe);echo"-->";
 
 		return $this->sum_importe;
 	}
