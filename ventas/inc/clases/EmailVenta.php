@@ -8,13 +8,10 @@ class EmailVenta{
 	protected $hay_efectivo = '';
 	protected $token = '';
 
-	function __construct( $id_comercial )
-	{
+	function __construct( $id_comercial ){
 		$this->id_comercial = $id_comercial;
 	}
-
-	function getEmails($tipo_email='') 
-	{
+	function getEmails ($tipo_email='') {
 		$email = '';
 		if (isDevel()) {
 			$email = 'diego@jyctel.com';
@@ -30,24 +27,87 @@ class EmailVenta{
 		}
 		return $email;
 	}
-
-	function getTable()
-	{
+	function getTable(){
 		return $this->info;
 	}
+	function setData( $data ){
+		$hay_efectivo = '';
+		$this->data = $data;
+		$this->token = $this->data['token_venta'];
+		$resumen = $this->data['resumen'];
+		$prods = $this->data['productos'];
+		$comercial = ucfirst($_SESSION['nombre_ventas']);
+	
+		$tit1 = 'style="border:1px solid black;"';
+		$tit2 = 'style="padding:5px;border-bottom:1px solid;background-color:#d9dcdea8;"';
+		$info = "<style>
+			table.resumen-venta tr{ border:1px solid gray;}
+			table.resumen-venta td, table th{padding:0px 10px;}
+			</style>";
+		$info .= '<table class="resumen-venta" style="text-align:left;width:fit-content;border:1px solid #03111f;">';
+		$info .= "<caption>Resumen Venta ( $comercial )</caption>";	
+	
+		foreach( $resumen as $nproducto => $datos ){
+			$info .= "<tr><th $tit1><br/> >> Producto: ".strtoupper($nproducto)." | {$this->token}<br/><br/></th></tr>";
+			foreach( $datos as $id_producto => $producto ){
+				$infop = $prods[$nproducto][$id_producto];
+				//syslog(LOG_INFO," email prods: ".json_encode($infop));
+				$info_prod = $infop['producto'];
+				$info_prov = $infop['proveedor'];
+				$info_cli = $infop['cliente'];
+				$info .= "<tr>";
+				$info .= sprintf("<th $tit2 >%s : %s | %s : %s | %s : %s</th>",
+					'COMPRA',$producto['compra'],'VENTA',$producto['venta'],'MARGEN',$producto['margen']);
+				$info .= "</tr>";
+				$info .= sprintf("<tr><th>Voucher : %s</th></tr>", $info_prod['localizador']);
+				$info .= sprintf("<tr><th>Reserva : %s</th></tr>", ($info_prod['reserva'] != 0 ? 'SI':'NO'));
+				$info .= sprintf("<tr><th>Fecha Venta : %s</th></tr>", $info_prod['fecha_venta']);
+				$datapv = getProveedor( $info_prov['sel_proveedor'] );
+				$prov = (array)$datapv[0];
+				$info .= "<tr><th $tit2 >Proveedor : {$prov['nombre']}</th></tr>";
+				$info .= sprintf("<tr><th>Fecha Limite Pago : %s</th></tr>", $info_prov['fecha_limite_proveedor']);
+				$info .= sprintf("<tr><th>Nota : %s</th></tr>", $info_prov['nota']);
+				$info .= "<tr><th $tit2 >Cliente : {$info_cli['nombre']}</th></tr>";
+				$info .= "<tr><th>Telefono : {$info_cli['telefono']} / {$info_cli['contacto']}</th></tr>";
+				$info .= "<tr><th>Codigo SAP : {$info_cli['cardcode']}</th></tr>";
+				$info .= "<tr><th>Nota : {$info_cli['nota']}</th></tr>";
+				$info .= "<tr><th $tit2>Comprobantes</th></tr>";
 
-	public function send()
-	{
-		$headers = "MIME-Version: 1.0" . "\r\n";
-		$headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
-		$headers .= 'From: <ventas@jyctel.com>' . "\r\n";
-		$headers .= 'Cc: diego@jyctel.com' . "\r\n";
-		
-		mail( $this->getEmails(), 'Resumen Venta - '.$this->token . $this->hay_efectivo, $this->info,$headers);
+				foreach( $producto['asignaciones'] as $asignacion ) {
+
+					syslog(LOG_INFO," tipo_ingreso:" . serialize($asignacion));
+
+					$c = $asignacion['comprobante'];
+					if(preg_match('/^E-/', $c, $output_array)) {
+						$hay_efectivo = '- PAGO CON EFECTIVO!';
+					}
+					if (isset($asignacion['tipo']) && strtolower($asignacion['tipo']) == 'cuenta') {
+						$hay_efectivo = '- PAGO CON INGRESO EN CUENTA!';
+					}
+					if (preg_match('/^C[0-9]+$/', $c, $match)) {
+						$hay_efectivo = '- PAGO CON INGRESO EN CUENTA!';
+					}
+
+					$info .= "<tr><th> ".$asignacion['comprobante']." | Cantidad: ".$asignacion['asignado']."</th></tr>";
+					$info .= "<tr><th>Texto Comprobante</th></tr>";
+					$info .= sprintf( "<tr><th>%s</th></tr>", $asignacion[ 'texto' ] );
+				}
+			}
+		}
+		$info .= "</table>";
+		syslog(LOG_INFO," hay_efectivo:" . $hay_efectivo);
+		$this->hay_efectivo = $hay_efectivo;
+		$this->info = $info;
 	}
 
-	public function sendEmailCoche($info) 
-	{
+	function setToken($token) {
+
+		$this->token = $token;
+
+	}
+
+	function sendEmailCoche($info) {
+
 		$f_venta = $info['producto']['fecha_venta'];
 		$f_entrega = $info['producto']['fecha_inicial'];
 		$f_recogida = $info['producto']['fecha_final'];
@@ -83,13 +143,13 @@ class EmailVenta{
 		$headers = "MIME-Version: 1.0" . "\r\n";
 		$headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
 		$headers .= 'From: <ventas@jyctel.com>' . "\r\n";
-		$headers .= 'Cc: diego@jyctel.com' . "\r\n";
+		//$headers .= 'Cc: diego@jyctel.com' . "\r\n";
 		
 		mail( $this->getEmails ('coche'), 'Resumen Venta Coche - '.$this->token, $this->info,$headers);
 	}
 
-	public function sendEmailTrustPilot($venta, $producto, $asignaciones_coche) 
-	{
+	public function sendEmailTrustPilot($venta, $producto, $asignaciones_coche) {
+		
 		$fecha_pago = date('Y-m-d');
 		foreach ($producto as $bloque) {
 			if (isset($bloque['producto'])) {
@@ -141,82 +201,15 @@ class EmailVenta{
 
 		syslog (LOG_INFO, __FILE__ . ':'.__METHOD__ . ':cantidad: ' . $cantidad);
 		syslog (LOG_INFO, __FILE__ . ':'.__METHOD__ . ':' . ($res ? 'sended -- '.$email_cliente:'not-sended ' . $email_cliente));
+		
 	}
 
-	function setData( $data ) 
-	{
-		$hay_efectivo = '';
-		$this->data = $data;
-		$this->token = $this->data['token_venta'];
-		$resumen = $this->data['resumen'];
-		$prods = $this->data['productos'];
-		$comercial = ucfirst($_SESSION['nombre_ventas']);
-	
-		$tit1 = 'style="border:1px solid black;"';
-		$tit2 = 'style="padding:5px;border-bottom:1px solid;background-color:#d9dcdea8;"';
-		$info = "<style>
-			table.resumen-venta tr{ border:1px solid gray;}
-			table.resumen-venta td, table th{padding:0px 10px;}
-			</style>";
-		$info .= '<table class="resumen-venta" style="text-align:left;width:fit-content;border:1px solid #03111f;">';
-		$info .= "<caption>Resumen Venta ( $comercial )</caption>";	
-	
-		foreach( $resumen as $nproducto => $datos ){
-			$info .= "<tr><th $tit1><br/> >> Producto: ".strtoupper($nproducto)." | {$this->token}<br/><br/></th></tr>";
-			foreach( $datos as $id_producto => $producto ){
-				$infop = $prods[$nproducto][$id_producto];
-				//syslog(LOG_INFO," email prods: ".json_encode($infop));
-				$info_prod = $infop['producto'];
-				$info_prov = $infop['proveedor'];
-				$info_cli = $infop['cliente'];
-				$info .= "<tr>";
-				$info .= sprintf("<th $tit2 >%s : %s | %s : %s | %s : %s</th>",
-					'COMPRA',$producto['compra'],'VENTA',$producto['venta'],'MARGEN',$producto['margen']);
-				$info .= "</tr>";
-				$info .= sprintf("<tr><th>Voucher : %s</th></tr>", $info_prod['localizador']);
-				$info .= sprintf("<tr><th>Reserva : %s</th></tr>", ($info_prod['reserva'] != 0 ? 'SI':'NO'));
-				$info .= sprintf("<tr><th>Fecha Venta : %s</th></tr>", $info_prod['fecha_venta']);
-				$datapv = getProveedor( $info_prov['sel_proveedor'] );
-				$prov = (array)$datapv[0];
-				$info .= "<tr><th $tit2 >Proveedor : {$prov['nombre']}</th></tr>";
-				$info .= sprintf("<tr><th>Fecha Limite Pago : %s</th></tr>", $info_prov['fecha_limite_proveedor']);
-				$info .= sprintf("<tr><th>Nota : %s</th></tr>", $info_prov['nota']);
-				$info .= "<tr><th $tit2 >Cliente : {$info_cli['nombre']}</th></tr>";
-				$info .= "<tr><th>Telefono : {$info_cli['telefono']} / {$info_cli['contacto']}</th></tr>";
-				$info .= "<tr><th>Codigo SAP : {$info_cli['cardcode']}</th></tr>";
-				$info .= "<tr><th>Nota : {$info_cli['nota']}</th></tr>";
-				$info .= "<tr><th $tit2>Comprobantes</th></tr>";
-
-				foreach( $producto['asignaciones'] as $asignacion ) {
-
-					syslog(LOG_INFO," tipo_ingreso:" . serialize($asignacion));
-
-					$c = $asignacion['comprobante'];
-					if ($c[0] == 'E') {
-						$hay_efectivo = '- PAGO CON EFECTIVO!';
-					}
-					if (isset($asignacion['tipo']) && strtolower($asignacion['tipo']) == 'cuenta') {
-						$hay_efectivo = '- PAGO CON INGRESO EN CUENTA!';
-					}
-					if (preg_match('/^C[0-9]+$/', $c, $match)) {
-						$hay_efectivo = '- PAGO CON INGRESO EN CUENTA!';
-					}
-
-					$info .= "<tr><th> {$asignacion['comprobante']} | Cantidad: {$asignacion['asignado']}</th></tr>";
-					$info .= "<tr><th>Texto Comprobante</th></tr>";
-					$info .= sprintf( "<tr><th>%s</th></tr>", $asignacion[ 'texto' ] );
-				}
-
-			}
-		}
-		$info .= "</table>";
-		syslog(LOG_INFO," hay_efectivo:" . $hay_efectivo);
-		$this->hay_efectivo = $hay_efectivo;
-		$this->info = $info;
-	}
-
-	function setToken($token) 
-	{
-		$this->token = $token;
+	function send(){
+		$headers = "MIME-Version: 1.0" . "\r\n";
+		$headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
+		$headers .= 'From: <ventas@jyctel.com>' . "\r\n";
+		//lias$headers .= 'Cc: diego@jyctel.com' . "\r\n";
+		
+		mail( $this->getEmails(), 'Resumen Venta - '.$this->token . $this->hay_efectivo, $this->info,$headers);
 	}
 }

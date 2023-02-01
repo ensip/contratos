@@ -4,20 +4,24 @@ include('InterfaceVenta.class.php');
 
 class Venta{
 	protected $actualizar_precios = array();
+	protected $adding = false;
 	protected $asignaciones = array('asignaciones' => array(),'comprobantes' =>array(),'productos' => array(),'errores' => array() );
 	protected $asignaciones_creadas = null;
 	protected $comprobante = array();
+	protected $editando = 0;
 	protected $errores_asignacion = '';
 	protected $fecha_final_incorrecta = 0;
 	protected $hay_productos_set = 0;
 	protected $html_asignaciones_creadas = null;
 	protected $id_comercial = 0;
 	protected $info_venta = array();
+	protected $listado_comprobantes = '';
 	protected $nota = array();
 	protected $ok_to_add = NO_ADD_FORM; 
 	protected $post_data = array();
 	protected $precios_guardados = array('totales'=>array('compra'=>0,'venta'=>0,'margen'=>0));
 	protected $producto = null;
+	protected $producto_actual = '';
 	protected $products = array();
 	protected $producto_fijado = '';
 	protected $res_crearVenta = null;
@@ -33,6 +37,12 @@ class Venta{
 		/* guardor datos del post */
 		$this->post_data = $post;
 	}
+
+	private function activarVerComprobante() {
+		
+		$this->ver_form_comprobante = 1;
+	}	
+
 	/*
 	 * si los datos son completos y correctos se devuelven para añadirlos
 	 * 
@@ -56,7 +66,7 @@ class Venta{
 		$this->products = $datos;
 	}	
 	
-	function addInfoVenta ($producto_actual) {
+	function addInfoVenta($producto_actual) {
 
 		$this->info_venta['producto_actual'] = $producto_actual;
 		$this->info_venta['fecha_venta'] = date('Y-m-d');	
@@ -90,7 +100,56 @@ class Venta{
 		$precio_compra = $this->products[$tipo][$id]['proveedor']['precio_compra_proveedor'];	
 		//$this->precios_nuevos = array('compra' => $precio_compra );
 	}
-	function checkAddNewProduct ($check_campos, $new_product) {
+	public function calcularDivisa() {
+		$divisa = 1;
+		$divisas = array();
+		
+		if (isset($this->asignaciones['asignaciones']['coche'])) {
+			$asignaciones = $this->asignaciones['asignaciones']['coche'];
+			foreach ($asignaciones as $asignacion) {
+				if (!isset($divisas[$asignacion['divisa']])) {
+					$divisas[$asignacion['divisa']]  = 0;	
+
+				}
+				$divisas[$asignacion['divisa']] ++;	
+			}
+
+		} else {
+			$divisas = array();
+			if (isset($this->asignaciones['comprobantes'])) {
+				$cs = $this->asignaciones['comprobantes'];
+				if (!empty($cs)) {
+					foreach ($cs as $c) {
+						if (!isset($divisas[$c['divisa']])) {
+							$divisas[$c['divisa']] = 0;
+						} 
+						$divisas[$c['divisa']] ++;
+					}
+				}
+			}
+		}
+		if (!empty($divisas)) {
+			$mayor_divisa = array();
+			$sel_divisa = 0;
+			foreach($divisas as $divisa => $cant) {
+				if (empty($mayor_divisa)) {
+					$mayor_divisa = $cant;
+					$sel_divisa = $divisa;
+			
+				} else {
+					if ($cant > $mayor_divisa) {
+						$sel_divisa = $divisa;
+					}
+				}
+			}
+			if ($sel_divisa) {
+				$divisa = $sel_divisa;
+			}
+		}
+		return $divisa;
+	}
+
+	function checkAddNewProduct($check_campos, $new_product) {
 		$datos_check = array();
 		$info_producto_reserva = null;
 		$reserva = 0;
@@ -113,7 +172,7 @@ class Venta{
 			$check_campos = COMPROBAR_CAMPOS;
 			$campos_vacios = $this->getCamposVacios($datos_check, $check_campos); 
 			if ( !is_null($campos_vacios)) {
-				$this->interface->setCamposVacios ($campos_vacios);
+				$this->interface->setCamposVacios($campos_vacios);
 				$ok_to_add = NO_ADD_FORM;
 			}
 
@@ -127,26 +186,36 @@ class Venta{
 		}
 		return $ok_to_add;
 	}
-	function getCamposVacios ($campos, $check_campos, $apartado_a_buscar = null) {
-		
+	function getCamposVacios($campos, $check_campos, $apartado_a_buscar = null) {
 		$campos_vacios = null;
-		$campos_no_obligatorios = DatosVenta::getCamposNoObligatorios ($apartado_a_buscar);
-		foreach (DatosVenta::getApartadosVenta () as $apartado) {
-			if (isset($campos [$apartado]) && ($vacios = ControlCampos::checkCamposVacios (
+
+		$quitar_campos_no_obligatorios = array();	
+		if ($this->info_venta['producto_actual'] == 'coche') {
+			
+			//$quitar_campos_no_obligatorios = array('combustible');
+			if (isset($this->post_data[$this->producto_actual]['datos']['proveedor']['sel_proveedor']) && isset($this->post_data['campos_extra_coche_obligatorios'])) {
+				if ($this->post_data[$this->producto_actual]['datos']['proveedor']['sel_proveedor'] == $this->post_data['campos_extra_coche_obligatorios']) {
+					$quitar_campos_no_obligatorios = array('combustible', 'seguro', 'total_suplemento', 'recogida', 'cantidad_chofer', 'chofer', 'total_extras');
+				}
+			}	
+		}
+		$campos_no_obligatorios = DatosVenta::getCamposNoObligatorios($apartado_a_buscar, $quitar_campos_no_obligatorios);
+		foreach (DatosVenta::getApartadosVenta() as $apartado) {
+			if (isset($campos[$apartado]) && ($vacios = ControlCampos::checkCamposVacios(
 				$check_campos,
-				$campos [$apartado],
-				$campos_no_obligatorios [$apartado]
+				$campos[$apartado],
+				$campos_no_obligatorios[$apartado]
 			)) != null) {
 
-				$campos_vacios [$apartado] = $vacios;
+				$campos_vacios[$apartado] = $vacios;
 			}
 		}
 		return $campos_vacios;
 	}
 
-	function checkFechas ($datos, $reserva) {
+	function checkFechas($datos, $reserva) {
 		
-		$fechas = DatosVenta::getFechasVenta ($datos);
+		$fechas = DatosVenta::getFechasVenta($datos);
 	        $check_fechas = 1;
 
 		if ($reserva) {
@@ -171,7 +240,7 @@ class Venta{
 		else return false;
 	}
 
-	function cleanVenta () {
+	function cleanVenta() {
 		unset($_POST['send']);
 		unset($this->post_data['send']);
 		unset($this->post_data['asignaciones_creadas']);
@@ -216,20 +285,20 @@ class Venta{
 	}	
 
 	/* obtengo los precios de los productos para mostrar llamada desde contrl-ventas*/
-	function getHtmlResumenPrecios ($tipo_resumen) {
+	function getHtmlResumenPrecios($tipo_resumen) {
 		$html = '';
 		if ($tipo_resumen == 'producto') {
 			if( isset( $this->precios_guardados['productos'] ) ){
 				$tipo = $this->info_venta['producto_actual'];
 				$precios = $this->precios_guardados['productos'];
 				if (isset($precios[$tipo])) {
-					$html = $this->interface->getHtmlResumenPrecios ($precios, $tipo);	
+					$html = $this->interface->ResumenPrecios($precios, $tipo);	
 				}
 			}
 
 		} else if ($tipo_resumen == 'totales' ) {
 			$precios = $this->precios_guardados['totales'];
-			$html = $this->interface->getHtmlResumenPrecios ($precios, 'totales');	
+			$html = $this->interface->ResumenPrecios($precios, 'totales');	
 		}
 
 		return $html;
@@ -243,16 +312,16 @@ class Venta{
 		$post_data = null;
 		$post_set = null;
 			
-		$info_producto_escogido = $this->getInfoProductoEscogido ();
-		$this->addInfoVenta ($info_producto_escogido['nombre']);
-		$this->interface = new InterfaceVenta ($this->id_comercial);
+		$info_producto_escogido = $this->getInfoProductoEscogido();
+		$this->addInfoVenta($info_producto_escogido['nombre']);
+		$this->interface = new InterfaceVenta($this->id_comercial);
 		$this->producto = new Producto($info_producto_escogido, $this->interface);
 		$this->post_data['tipo_item'] = $info_producto_escogido['nombre'];
 		$this->interface->setProductoActual($info_producto_escogido['nombre']);	
 		$producto_actual = $info_producto_escogido['nombre'];
-		
+		$this->producto_actual = $producto_actual;	
+
 		if( isset( $this->post_data ) ){
-			
 			
 			$post_data = $this->post_data;
 		
@@ -272,9 +341,11 @@ class Venta{
 
 			if( isset( $post_data['add_nota'] )){ $this->addNota($post_data['venta']['nota'] ); } 
 			
-
 			/* para ver los campos comprobante */
-			if( isset( $post_data['add_div_comprobante'] )) $this->ver_form_comprobante = 1;
+			if( isset( $post_data['add_div_comprobante'] )) { 
+				$this->activarVerComprobante();
+			}
+
 			/* si se ha dado a BUSCAR datos*/
 			if( isset( $post_data['search'] )){
 				$tipo_datos_busqueda = $producto_actual;
@@ -293,7 +364,7 @@ class Venta{
 				}
 				$busqueda = new searchCliente($key_busqueda,$datos_busqueda[$key_busqueda],$producto_actual,$tipo_datos_busqueda);
 				$res_busqueda = $busqueda->getSearch();
-				$this->interface->setBusqueda( $res_busqueda );
+				$this->interface->Busqueda( $res_busqueda );
 			}
 			$quitar_tipo_producto = '';
 			$quitar_tipo_producto = '';
@@ -320,6 +391,7 @@ class Venta{
 			/* si edito un producto compruebo el precio de compra*/
 			$datos_editar = null;
 			if( isset( $post_data['editar'] ) ){
+				$this->editando = 1;
 				$datos_editar  = $post_data['editar'];
 				$quitar_tipo_producto = key($datos_editar);
 				$quitar_id_producto = key($post_data['editar'][$quitar_tipo_producto]);	
@@ -354,15 +426,13 @@ class Venta{
 					}
 				}
 			}
-			//debug($_POST);
 			/*compruebo si existen DATOS CREADOS */
 			if( $post_set != null )
 			{
-				$this->interface->addLocalizadores (DatosVenta::getLocalizadores ($post_set));
+				$this->interface->addLocalizadores(DatosVenta::getLocalizadores($post_set));
 				
 				$this->ok_to_add = OK_ADD_FORM;
-				
-				$productos = DatosVenta::getProductos ($post_set);
+				$productos = DatosVenta::getProductos($post_set);
 				
 				//unset( $post_set['localizadores'] );
 				if( count($productos > 0 )){
@@ -375,7 +445,7 @@ class Venta{
 			//si habian productos guardados añado los nuevos
 			/* si se ha dado a añadir datos nuevos */
 			if (isset($post_data['add_datos_cliente'])) {
-	
+				$this->adding = true;	
 				$check_campos = COMPROBAR_CAMPOS;
 				$id_cliente = '';
 				if( isset($post_data[$producto_actual]['datos']['clientes']) ){
@@ -385,7 +455,7 @@ class Venta{
 					}
 				}
 		
-				if ($this->ok_to_add = $this->checkAddNewProduct ($check_campos, $post_data[$producto_actual]['datos'])) {
+				if ($this->ok_to_add = $this->checkAddNewProduct($check_campos, $post_data[$producto_actual]['datos'])) {
 					$this->addDatosNuevos($post_data);
 					$this->addPrecioCompra( $producto_actual );
 				}
@@ -446,9 +516,9 @@ class Venta{
 				$asignacion->setAsignaciones( $asignaciones );
 				
 				$asignacion_nueva = $post_data['asignar'];
-				if (ControlCampos::existenDatosFacturacion ($post_data['factura']['datos']['cliente'])) {
+				if (ControlCampos::existenDatosFacturacion($post_data['factura']['datos']['cliente'])) {
 					$datos_facturacion['factura'] = $post_data['factura']['datos']['cliente']; 
-					if (!is_null ($this->getCamposVacios ($datos_facturacion,COMPROBAR_CAMPOS,'factura'))) {
+					if (!is_null ($this->getCamposVacios($datos_facturacion,COMPROBAR_CAMPOS,'factura'))) {
 						$asignacion_nueva['facturacion'] = $datos_facturacion['factura'];
 					}
 				}
@@ -523,40 +593,39 @@ class Venta{
 			if( !empty( $this->comprobantes ) ){
 				$this->asignaciones['comprobantes'] = $this->comprobantes;
 			}
-		
-			
+					
 			if (isset($this->post_data['send'])) {
-				$this->res_crearVenta = $this->procesarVenta ();
-				$this->cleanVenta (); 
+				$this->res_crearVenta = $this->procesarVenta();
+				$this->cleanVenta(); 
 			}
 			
 			$this->post_data = $post_data;
 			$this->getPrecios( $producto_actual );
-			$this->resumen_productos = $this->producto->getResumenProductos( $this->asignaciones );
+			$this->resumen_productos = $this->producto->getResumenProductos($this->asignaciones);
 		
 			$this->setWarnings();
 		}
 	}//end processData
-	function getHtmlResultVenta () {
+	function getHtmlResultVenta() {
 		
-		return  ($this->res_crearVenta != null) ? $this->interface->getHtmlInsert ($this->res_crearVenta) : '';
+		return  ($this->res_crearVenta != null) ? $this->interface->Insert($this->res_crearVenta) : '';
 	}
-	function getIdProductoEscogido ($nombre) {
+	function getIdProductoEscogido($nombre) {
 		if (isset($this->post_data['crear'])) {
 			$id = $this->post_data['id_tipo'][$this->post_data['crear']];
 		} else {
-			$searchs = array('nombre' => array ('operand' => '=', 'value' => $nombre ));
+			$searchs = array('nombre' => array('operand' => '=', 'value' => $nombre ));
 			$cols = 'id';
-			$raw_data = getCollectionBusqueda ('tipos_productos',$searchs, $cols);
+			$raw_data = getCollectionBusqueda('tipos_productos',$searchs, $cols);
 			if (!is_null($raw_data)) {
 				$id = $raw_data->id;
 			}
 		}
 		return $id;
 	}	
-	function getInfoProductoEscogido () {
-		$info['nombre'] = $this->getProductoEscogido ();
-		$info['id'] = $this->getIdProductoEscogido ($info['nombre']);
+	function getInfoProductoEscogido() {
+		$info['nombre'] = $this->getProductoEscogido();
+		$info['id'] = $this->getIdProductoEscogido($info['nombre']);
 		
 		return $info;
 	}
@@ -572,7 +641,7 @@ class Venta{
 		$datos_venta = $this->post_data['venta'];
 		$venta['precios'] = $datos_venta['precios'];
 		
-		$productos = DatosVenta::getProductos ($this->post_data['set']);
+		$productos = DatosVenta::getProductos($this->post_data['set']);
 		foreach($productos as $tipo => $p ){
 			foreach($p as $id => $info )
 				$productos[$tipo][$id]['facturacion'] = $productos[$tipo][$id]['cliente'];
@@ -614,7 +683,7 @@ class Venta{
 			$res_insert['venta'] = 1;
 			
 			$email['token_venta'] = $this->post_data['venta']['nombre'];
-			$email['resumen'] = $this->producto->getResumenProductos ($this->asignaciones);
+			$email['resumen'] = $this->producto->getResumenProductos($this->asignaciones);
 			$email['productos'] = $this->post_data['set'];
 			
 			//$email['asignaciones_creadas'] = $this->post_data['asignaciones_creadas'];
@@ -644,7 +713,12 @@ class Venta{
 			}
 		}
 	}
-
+	public function getAdding() {
+		return $this->adding;
+	}
+	public function getEditando() {
+		return $this->editando;
+	}
 	function getInterface() {
 		return $this->interface;
 	}
@@ -687,44 +761,9 @@ class Venta{
 	function getProducts() {	
 		return $this->products;	
 	}
-	function getProductByName ($producto) {	
-		return $this->products ($producto);
+	function getProductByName($producto) {	
+		return $this->products($producto);
 	}
-
-	function updateLocalizadores($post_set) {
-		
-		$localizadores = DatosVenta::getLocalizadores ($post_set);
-		$localizadores_productos = DatosVenta::getLocalizadoresProductos ($post_set);
-		
-		if ($localizadores != null) {
-			$new_localizadores = null;
-			foreach ($localizadores as $localizador) {
-				if ( $localizadores_productos != null && in_array($localizador, $localizadores_productos)) {
-					$new_localizadores[] = $localizador;	
-				}
-			}
-			if ($new_localizadores != null){
-				$localizadores = $new_localizadores;
-			}
-		}	
-		return $localizadores;
-	}
-	/*
-	 *	actualiza los localizadores del set de datos post_set al eliminar un producto
-	 * */
-	function updatePostSetLocalizadores($post_set) {
-		$productos = DatosVenta::getProductos ($post_set);
-		
-		if (!empty($productos)) {
-			$post_set['localizadores'] = $this->updateLocalizadores ($post_set);	
-			
-		} else {
-			unset($post_set['localizadores']);
-		}
-		
-		return $post_set;
-	}
-
 
 	function getNotas(){
 		$notas = array();
@@ -734,7 +773,7 @@ class Venta{
 		if( !empty( $this->nota ) ){
 			array_push($notas, $this->nota);
 		}
-		$html = ( !empty($notas) ) ? $this->interface->getListadoNotas($notas) : '';
+		$html = ( !empty($notas) ) ? $this->interface->ListadoNotas($notas) : '';
 
 		return $html;
 	}
@@ -747,22 +786,21 @@ class Venta{
 		//$val_nota = ( isset( $this->post_data['venta']['nota'] ) ) ? $this->post_data['venta']['nota'] : '';	
 		$nota = '';
 		if ($this->ver_input_nota) {
-			$nota = $this->interface->getHtmlInputAddNota();
+			$nota = $this->interface->InputAddNota();
 		
 		} else {
-			$nota = $this->interface->getHtmlButtonAddNota(); 
+			$nota = $this->interface->ButtonAddNota(); 
 		}
 	
 		return $nota ;
 	}
-	function getFechaFinalIncorrecta () {
+	function getFechaFinalIncorrecta() {
 		return $this->fecha_final_incorrecta;
 	}
 
 	/* Devuelve el formulario par añadir comprobantes */
 	function getFormComprobante(){
-		$html = $this->comprobante->getFormComprobante( $this->ver_form_comprobante );
-
+		$html = $this->comprobante->getFormComprobante($this->ver_form_comprobante);
 		return  $html;
 	}
 	
@@ -795,15 +833,17 @@ class Venta{
 			}
 			/* si no hay productos del producto actual no se muestra el boton para asignacion*/
 			if( $productos_asignables != null && $comprobantes_asignables != null ){
-				$html .= $this->comprobante->getBotonAsignacion();
+				if (!empty($this->listado_comprobantes)) {
+					$html .= $this->interface->ButtonAsignacion();
+				}
 			}
 			if( !empty($this->asignaciones['errores']) ){
-				$html .= $this->interface->getHtmlAsignacionesErrores ($this->asignaciones['errores']);	
+				$html .= $this->interface->AsignacionesErrores($this->asignaciones['errores']);	
 			}
 			if( $this->ver_form_asignacion && $productos_asignables != null ){
 				if( $productos_asignables != null && $comprobantes_asignables != null ){
 					$asignacion = $this->createAsignacion($comprobantes_asignables, $productos_asignables);
-					$html .= $asignacion->getFormularioAsignaciones (
+					$html .= $asignacion->getFormularioAsignaciones(
 						$this->info_venta['producto_actual'], 
 						$this->interface, 
 						$this->producto_fijado, 
@@ -816,7 +856,8 @@ class Venta{
 	}
 	/* devuelve html del listado de comprobantes */
 	function getListadoComprobantes(){
-		return $listado_comprobantes = $this->comprobante->getListadoComprobantes();
+		$this->listado_comprobantes = $this->comprobante->getListadoComprobantes();
+		return $this->listado_comprobantes;
 	}
 	/*
 	 * Devuelve listado asignaciones creadas, llamado desde control_crear_venta.php
@@ -824,7 +865,7 @@ class Venta{
 	function getListadoAsignacionesCreadas(){
 		$html = '';				
 		if( !empty($this->asignaciones['asignaciones']) ){
-			$html = $this->interface->getInputsAsignaciones( $this->asignaciones['asignaciones'] ); 	
+			$html = $this->interface->InputsAsignaciones( $this->asignaciones['asignaciones'] ); 	
 		}
 		return $html;
 	}
@@ -844,7 +885,8 @@ class Venta{
 				$data_cliente = $this->post_data[ $producto_actual ][ 'datos' ];
 			}
 			$list_clientes = $this->producto->getClientesProductos();
-			$bloque = $this->interface->getHtmlAddProductForm( $data_cliente, $list_clientes );	
+			$this->interface->loadValoresCamposExtra();
+			$bloque = $this->interface->AddProductForm( $data_cliente, $list_clientes );	
 		}
 		
 		return $bloque;	
@@ -868,7 +910,7 @@ class Venta{
 		$resumen_productos_html = '';
 		if( $this->resumen_productos != null ){ 
 			$comprobantes = ( !empty($this->asignaciones['comprobantes']) ) ? 1 : 0;
-			$resumen_productos_html = $this->interface->getDivResumenProductos( $this->resumen_productos, $comprobantes );
+			$resumen_productos_html = $this->interface->ResumenProductos( $this->resumen_productos, $comprobantes );
 		}
 		return $resumen_productos_html ; 
 	}
@@ -886,7 +928,7 @@ class Venta{
 			}
 		}
 		if( $send ){
-			return $this->interface->getInputSend();
+			return $this->interface->InputSend();
 		}
 		else{
 			return false;
@@ -898,7 +940,7 @@ class Venta{
 	 *	nombre_producto : string|null
 	 *	return vuelo:defecto | producto:checked
 	 * */
-	function getProductoEscogido () {
+	function getProductoEscogido() {
 		$post_data = $this->post_data;
 		$producto_escogido = 'vuelo';
 		if (isset($post_data['tipo_item']) && $post_data['tipo_item'] != null) {
@@ -914,7 +956,7 @@ class Venta{
 		return $producto_escogido;
 	}
 
-	function getWarnings () {
+	function get_warnings() {
 		return $this->warnings;
 	}
 	
@@ -929,10 +971,13 @@ class Venta{
 			$this->warnings[$i] = 'campos-vacios';
 		}
 		if( $margen < 0 && $compra > 0 ){
-			$this->warnings[$i+1] = 'margen-negativo';
+			$this->warnings[(!$i ? $i : $i ++)] = 'margen-negativo';
 		}
 		if ($this->getFechaFinalIncorrecta()) {
-			$this->warnings[($i+1)] = 'fecha-final-incorrecta';
+			$this->warnings[(!$i ? $i : $i ++)] = 'fecha-final-incorrecta';
+		}
+		if (!empty($this->comprobante->warning)) {
+			$this->warnings[(!$i ? $i : $i ++)] = $this->comprobante->warning;
 		}
 		if( !empty($this->resumen_productos) ){
 			$comprobantes = $this->asignaciones['comprobantes'];
@@ -959,6 +1004,42 @@ class Venta{
 			}
 		}
 	}
+
+	function updateLocalizadores($post_set) {
+		
+		$localizadores = DatosVenta::getLocalizadores($post_set);
+		$localizadores_productos = DatosVenta::getLocalizadoresProductos($post_set);
+		
+		if ($localizadores != null) {
+			$new_localizadores = null;
+			foreach ($localizadores as $localizador) {
+				if ( $localizadores_productos != null && in_array($localizador, $localizadores_productos)) {
+					$new_localizadores[] = $localizador;	
+				}
+			}
+			if ($new_localizadores != null){
+				$localizadores = $new_localizadores;
+			}
+		}	
+		return $localizadores;
+	}
+	/*
+	 *	actualiza los localizadores del set de datos post_set al eliminar un producto
+	 * */
+	function updatePostSetLocalizadores($post_set) {
+		$productos = DatosVenta::getProductos($post_set);
+		
+		if (!empty($productos)) {
+			$post_set['localizadores'] = $this->updateLocalizadores($post_set);	
+			
+		} else {
+			unset($post_set['localizadores']);
+		}
+		
+		return $post_set;
+	}
+
+
 	/* si quito un producto actualizo precios : desde processData*/
 	function updatePrecios( $tipo, $cantidad, $accion ){
 		$this->actualizar_precios['totales']['compra'] = $cantidad;	
