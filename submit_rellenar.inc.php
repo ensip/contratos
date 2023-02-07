@@ -842,6 +842,12 @@ function checkIfMustNauta($hay_nautas,$hay_va_nauta,$oferta_nauta,$obligado_naut
 					}
       					//php_mailer($comprobante . " : num_pedido" . $num_pedido, 'comprobante genius', 'diego@jyctel.com', 'contratos@jyctel.com');
 				}
+				if (strpos($campos, '348929233') !== false) {
+					if (preg_match('/^348929233-/m', $comprobante, $matches) == false) {
+						$quitar_comercio = true;
+						$num_pedido = '348929233-' . $num_pedido;
+					}
+				}
 			}
 
 			// si moneda comprobante es USD y la divisa de la oferta es 1 EUR 
