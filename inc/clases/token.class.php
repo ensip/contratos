@@ -262,7 +262,10 @@ class token_cr2_v1 extends token_cr {
 	private function set_version_cr($token) {
 		return false;
 	}
-
+	public function check_last_digits() {
+		$digits = $this->match[self::match_random_cr2];
+		return (strlen($digits) < 4 ? false : true);
+	}
 	protected function crear_num_pedido() {
 		$identifier = $this->version_comprobante;
 		$user_token = $this->match[self::match_user_token_cr2];
@@ -380,8 +383,8 @@ class token {
 		return null;
 	}
 }
-/*
-$tokens = array(
+
+$tokens_test = array(
 	//'PRE340000002_TKI_b9763f8bf414236afe269e5054cf32d1', 
 	//'CR2:eoja2q:401:1116',
 	//'CR:224255293:1662208660:4782',
@@ -389,10 +392,13 @@ $tokens = array(
 	//'CBN:12520:f7b08e929dc0e905e3f4d929ef9e1d5d', 
 	//'PRE100002784_TK_bb7fa07eef5ec97e379d16e6a94c5dfa',
 	//'F-Asasasasaa99k9k',
-	//'E-Asasasasaa99k9k',
-);
-foreach ($tokens as $token) {
-	$search_token = token::search($token);
-	print_r($search_token->get_token());
+	//'E-58f0271f0ff274c6060487893223f379',
+	//'CR2_qhbmni_4857_691'
+	);
+if (!empty($tokens_test)) {
+	foreach ($tokens_test as $token) {
+		$search_token = token::search($token);
+		var_dump($search_token->check_last_digits());
+	}
 }
- */
+

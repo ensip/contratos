@@ -97,8 +97,11 @@ class ComprobanteData{
 
 	public function getDataCR2V_($cr, $num_pedido) 
 	{
-		var_dump($_POST[$_POST['tipo_item']]['datos']['producto']['reserva']);
 		$search_token_orig = token::search($num_pedido);
+
+		if (!$search_token_orig->check_last_digits()) {
+			return array(0 => 'error' , 'str' => 'Comprobante no válido, falta un dígito : ' . $search_token_orig->get_num_pedido());
+		}
 		//echo $token_pago_interno_orig = $search_token_orig->get_token();
 
 		$this->datos_comprobante['nombre'] = 'TPV_CR';
@@ -741,7 +744,7 @@ class ComprobanteData{
 		$dataComprobante = array();
 		$tipoComprobante = $searchToken->tipo_comprobante;
 		$nombreComprobante = $tipoComprobante;
-	
+		
 		switch($tipoComprobante) {
 
 			case 'CBN':
@@ -780,7 +783,7 @@ class ComprobanteData{
 
 				if (!$this->no_comprobar_num_pedido && checkIfExistsNumPedido($search_token->get_num_pedido())) {
 					syslog(LOG_INFO, __FILE__ . ": TK(I|A) : " . $search_token->get_num_pedido());
-					return array(0 => 'error' , 'str' => 'Token <b>'.$search_token->get_num_pedido().'</b> existente');
+					//return array(0 => 'error' , 'str' => 'Token <b>'.$search_token->get_num_pedido().'</b> existente');
 				}
 				
 				$this->tk['ref_tk'] = $search_token->get_user_token();
