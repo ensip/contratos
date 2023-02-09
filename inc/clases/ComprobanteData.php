@@ -783,7 +783,7 @@ class ComprobanteData{
 
 				if (!$this->no_comprobar_num_pedido && checkIfExistsNumPedido($search_token->get_num_pedido())) {
 					syslog(LOG_INFO, __FILE__ . ": TK(I|A) : " . $search_token->get_num_pedido());
-					//return array(0 => 'error' , 'str' => 'Token <b>'.$search_token->get_num_pedido().'</b> existente');
+					return array(0 => 'error' , 'str' => 'Token <b>'.$search_token->get_num_pedido().'</b> existente');
 				}
 				
 				$this->tk['ref_tk'] = $search_token->get_user_token();
