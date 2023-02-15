@@ -25,7 +25,7 @@ class EmailVenta{
 				$email = ( isset($_SESSION['email_ventas']) ? $_SESSION['email_ventas'] : 'admon@jyctel.com' );
 				
 				if ($this->hay_efectivo != '') 
-					$email .= ",auxiliar@ensip.com, contabilidad@jyctel.com, auxiliar@jyctel.com,recargas13@jyctel.com,practicas@jyctel.com";
+					$email .= ",administracion@jyctel.com,contabilidad@jyctel.com, auxiliar@jyctel.com,recargas13@jyctel.com,practicas@jyctel.com";
 			}
 		}
 		return $email;
