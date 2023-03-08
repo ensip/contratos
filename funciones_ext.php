@@ -953,7 +953,7 @@ function checkIfExistsNumPedido( $num_pedido, $and = '' )
 	if( $res->rows > 0 ){
 		return true;
 	}else{
-		$sql = "select id from Ventas.ventas_ingresos where num_pedido = '".$num_pedido."' and token in (select token from Ventas.ventas_datos_producto where estado = 1)";
+		$sql = "select id from Ventas.ventas_ingresos where num_pedido = '".str_replace('GENIUS-', '', $num_pedido)."' and token in (select token from Ventas.ventas_datos_producto where estado = 1)";
 		$res = getResult(DB2,$sql);
 		if( $res->rows > 0 ) return true;
 	}	
