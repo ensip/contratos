@@ -784,7 +784,7 @@ function sendEmail($html_content, $subject, $email, $cc, $add_cc)
 
     if ( $add_cc == 'gestion' )
     {
-        $emails_envio = array('auxiliar@ensip.com', 'auxiliar@jyctel.com');
+        $emails_envio = array('administracion@jyctel.com', 'auxiliar@jyctel.com');
     }
   
     return php_mailer($html_content,$subject,$email,$cc,$emails_envio);
