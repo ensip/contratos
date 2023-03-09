@@ -468,35 +468,45 @@ class ComprobanteData{
 
 		if (is_array($num_pedido)) return $num_pedido; //retorno error
 		
+		$and_comercio = '';
+
+		syslog(LOG_INFO, __FILE__ . ": comprobante:".$comprobante);
+
 		$comprobar_pedido = $num_pedido;
 		//COMERCIO BBVA
 		if (strpos($comprobante, '348929233') !== false) {
+			$datos_comprobante['comercio'] = '348929233';
 			$num_pedido = 'BVA-' . $num_pedido;
 			$comprobar_pedido = '348929233-'.$num_pedido;
+			$and_comercio = "and comercio like '%348929233%'";
 		}
-
+		
 		$and_genius = '';
+		
 		//COMERCIO BBVA GENIUS
 		if (strpos($comprobante, '353262801') !== false) {
 			
+			$datos_comprobante['comercio'] = '353262801';
 			$num_pedido = 'BVA-' . $num_pedido;
+			$comprobar_pedido = 'GENIUS-' . $num_pedido;
+			$and_comercio = "and comercio like '%353262801%'";
 
 			$and_genius = " and comprobante_tpv like '%GENIUS%'";
-			$comprobar_pedido = 'GENIUS-' . $num_pedido;
 		}
-		$and_genius = '';
+		
 		//COMERCIO BANKINTER GENIUS
-		syslog(LOG_INFO, __FILE__ . ": comprobante:".$comprobante);
-
 		if (strpos($comprobante, '014443238') !== false) {
 			
+			$datos_comprobante['comercio'] = '014443238';
 			$num_pedido = 'BNKR-' . $num_pedido;
+			$comprobar_pedido = $num_pedido;
+			$and_comercio = "and comercio like '%014443238%'";
 
 			$and_genius = " and comprobante_tpv like '%GENIUS%'";
 			//$comprobar_pedido = 'GENIUS-' . $num_pedido; //quitado pk se han repetido ventas
-			$comprobar_pedido = $num_pedido;
 		}
-		if (!$this->no_comprobar_num_pedido && checkIfExistsNumPedido($comprobar_pedido, $and_genius)) {
+
+		if (!$this->no_comprobar_num_pedido && checkIfExistsNumPedido($comprobar_pedido, $and_genius, $and_comercio)) {
 			syslog(LOG_INFO, __FILE__ . ": checkIfExistsNumPedido:".$comprobar_pedido);
 			return array(0 => 'error' , 'str' => 'Pedido existente : ' . $num_pedido);
 		}	

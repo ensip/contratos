@@ -320,7 +320,7 @@ function getDataUsuario($pin)
 	    "WHERE pincode='$pin' and `status`= 1 ";
     $con->makeQuery( $sql );
 
-    //syslog(LOG_INFO, $sql );
+  //  syslog(LOG_INFO, $sql );
 
     $num_rows = $con->getNumRows();
 
@@ -911,8 +911,12 @@ function getNumContratos($tipo_c,$date,$check){
 	}
 	$no_include = getNotIncludesContratos();
     
+	/*
 	$sql = "SELECT c.id FROM PrepagosJyc.contratos c INNER JOIN PrepagosJyc.contratos_ofertas co ON c.id_oferta = co.id ".
 		"WHERE ".$tipo_c." AND `check`= $check AND fecha >= '".$date->format('Y-m-d H:i:s')."' $no_include $and_not_test ORDER BY fecha";
+	 */
+	$sql = "SELECT c.id FROM PrepagosJyc.contratos c INNER JOIN PrepagosJyc.contratos_ofertas co ON c.id_oferta = co.id ".
+		"WHERE fecha >= '".$date->format('Y-m-d H:i:s')."' AND ".$tipo_c." AND `check`= $check $no_include $and_not_test ORDER BY fecha";
 	$res = $con->makeQuery($sql);        
      
     
@@ -945,19 +949,23 @@ function generateNumPedido(){
   }
   return $new_n_pedido;
 }
-function checkIfExistsNumPedido( $num_pedido, $and = '' )
+function checkIfExistsNumPedido( $num_pedido, $and_contrato = '', $and_comercio = '' )
 {
-	$sql = "SELECT num_pedido FROM PrepagosJyc.contratos WHERE fecha >= '" . date('2020-01-01') . "' and num_pedido = '" . $num_pedido . "' " . $and;
-	$res = getResult(DB2,$sql);
+	$con = getConnLi('getDataPre');
 
-	if( $res->rows > 0 ){
+	$sql = "SELECT num_pedido FROM PrepagosJyc.contratos WHERE fecha >= '" . date('2020-01-01') . "' and num_pedido = '" . $num_pedido . "' " . $and_contrato;
+    	$res = $con->query($sql);
+	syslog(LOG_INFO, 'info : ' . __FILE__ . ' : ' . __method__ . ":check-contratos: $sql ".$num_pedido);
+
+	if( $res->num_rows > 0 ){
 		return true;
 	}else{
-		$sql = "select id from Ventas.ventas_ingresos where num_pedido = '".str_replace('GENIUS-', '', $num_pedido)."' and token in (select token from Ventas.ventas_datos_producto where estado = 1)";
-		$res = getResult(DB2,$sql);
-		if( $res->rows > 0 ) return true;
+		$sql = "select id from Ventas.ventas_ingresos where num_pedido = '".str_replace('GENIUS-', '', $num_pedido)."' ".$and_comercio." and token in (select token from Ventas.ventas_datos_producto where estado = 1)";
+		 //$sql = "select id from Ventas.ventas_ingresos where num_pedido = '".$num_pedido."' ".$and_comercio." and token in (select token from Ventas.ventas_datos_producto where estado = 1)";
+    		$res2 = $con->query($sql);
+		if( $res2->num_rows > 0 ) return true;
 	}	
-	syslog(LOG_INFO, 'error : ' . __FILE__ . ' : ' . __method__ . ':not-found: '.$num_pedido);
+	syslog(LOG_INFO, 'info : ' . __FILE__ . ' : ' . __method__ . ":not-found: $sql ".$num_pedido);
 
 	return false;
 }
@@ -1381,20 +1389,12 @@ function getOfertasById($id)
 {
     $ofertas = array();
 
-    $sql = "SELECT id, nombre, visibilidad FROM PrepagosJyc.contratos_ofertas WHERE id = $id AND `status`= 1 and solo_ivr=0 ORDER BY orden ASC";
-    $res = getResult(DB2,$sql);
+    $con = getConnLi('getDataPre');
+    $sql = "SELECT id, nombre, visibilidad, tipo FROM PrepagosJyc.contratos_ofertas WHERE id = $id AND `status`= 1 and solo_ivr=0 ORDER BY orden ASC";
+    $res = $con->query($sql);
     
-    if ( $res->getNumRows() > 0 ) 
-    {
-        if ( $res->getNumRows() == 1 )
-        {
-            $o = $res->fetchObject();
-            $ofertas[0] = $o;
-        }
-        else
-        {
-            $ofertas = $res->fetchObject();
-        }
+    if ( $res->num_rows > 0 ) {
+	$ofertas[] = $res->fetch_object();
     }
 
     return $ofertas;
@@ -1483,8 +1483,8 @@ function getTiposOfertas( $id = null )
 {
 	$where = (!is_null($id)) ? "where id = ".$id : '';
 	$sql = "SELECT id,tipo FROM PrepagosJyc.contratos_tipos_ofertas ".$where." ORDER by id ASC";
-    $res = getResult(DB2,$sql);
-    $html = '';
+	$res = getResult(DB2,$sql);
+    	$html = '';
 
     if ( $res->getNumRows() > 0 ) {
 	    $tipo_ofertas = $res->fetchObject();
@@ -1653,6 +1653,10 @@ function calculoIncrementoSaldo($prepago,$pin,$contrato,$valor_porcentaje,$data_
     syslog(LOG_INFO, "POSTPAGO_REG inc_amount: $inc_amount"); 
     return $inc_amount;
 }
+function cleanMovilEsp($movil) 
+{
+	return (substr($movil, 0, 4) == "0034") ? str_replace("0034","",$movil) : $movil;
+}
 function getDataCC_CARD($pin,$tipo)
 {
     $sql = "SELECT $tipo FROM  `cc_card` WHERE  `username` = '$pin'";
@@ -1806,4 +1810,52 @@ function getNewDirContratos()
 	} else {
 		return 'contratos';
 	}
+}
+function TablaVentasComercial( $comercial, $id_cartera )
+{
+	//if( $comercial == 21 ){ $comercial = 16;$id_cartera = 608;}
+	$sql = "SELECT cubacel, llamadas, tipo_producto FROM PrepagosJyc.`contratos` ".
+		"WHERE `fecha` BETWEEN '".date('Y-m-01 00:00:00')."' AND now() and `cod_vendedor` = '".$comercial."' ";
+	$res = getResult(DB2,$sql);
+	$tr = '';
+	$sum_cubacel_ventas = 0;
+	$sum_llamadas_ventas = 0;
+	$sum_nauta_venta = 0;
+	$sum_total = 0;
+	if( $res->rows > 0 ){
+		if( $res->rows == 1 ) $f[0] = $res->fetchObject();else{ $f = $res->fetchObject();}
+		foreach($f as $data ){
+			$sum_cubacel_ventas += $data->cubacel;
+			$sum_llamadas_ventas += $data->llamadas;
+			if( unserialize($data->tipo_producto ) ){
+				$tipo = unserialize($data->tipo_producto);
+				$sum_nauta_venta += $tipo['nauta'];
+			}
+		}
+		$sum_total = $sum_cubacel_ventas + $sum_llamadas_ventas + $sum_nauta_venta;
+	}
+	$tr = "<tr><th>Cubacel</th><td>$sum_cubacel_ventas</td></tr>".
+		"<tr><th>Nauta</th><td>$sum_nauta_venta</td></tr>".
+		"<tr><th>Llamadas</th><td>$sum_llamadas_ventas</td></tr>";
+	/*
+	 * quitado 3/11/2022 pk no hay ofertas ivr desde 2022
+	 * $sum_ivr_cubacel_ventas = 0;
+	$sum_ivr_llamadas_ventas = 0;
+	$sql = "SELECT SUM(cubacel) as sum_cub, SUM(llamadas) as sum_llam FROM PrepagosJyc.`contratos` ".
+		"inner join PrepagosJyc.admin on comercial_cartera = admin.id_comercial ".
+		"WHERE `fecha` BETWEEN '".date('Y-m-01 00:00:00')."' AND now() and `cod_vendedor` = 57 and  comercial_cartera = '".$id_cartera."'";
+	$res = getResult(DB2,$sql);
+	if( $res->rows > 0 ){
+		if( $res->rows == 1 ) $f2[0] = $res->fetchObject();else{ $f2 = $res->fetchObject();}
+		foreach($f2 as $new_data ){
+			//syslog(LOG_INFO,"data:".serialize($new_data));
+			$sum_ivr_cubacel_ventas += $new_data->sum_cub;
+			$sum_ivr_llamadas_ventas += $new_data->sum_llam;
+		}
+		$sum_total += $sum_ivr_cubacel_ventas + $sum_ivr_llamadas_ventas ;
+		$tr .= "<tr><th>IVR Cubacel</th><td>$sum_ivr_cubacel_ventas</TD></TR>".
+			"<tr><th>IVR Llamadas</th><td>$sum_ivr_llamadas_ventas</td></tr>";
+
+	}*/
+	return $html = sprintf("<table border='1' id='tabla_ventas'>%s<tr><th>Total</th><td>%s</td></tr></table>",$tr,$sum_total);
 }
